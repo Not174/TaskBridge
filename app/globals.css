@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #1A2744;
+  --color-primary-hover: #111a2e;
+  --color-accent: #F59E0B;
+  --color-accent-hover: #d97706;
+  --color-surface: #F3F4F6;
+  --color-success: #10B981;
+  --color-info: #3B82F6;
+  --color-warning: #F59E0B;
+  --color-error: #EF4444;
+}
+
+body {
+  font-family: var(--font-inter), sans-serif;
+  background-color: #F8FAFC;
+  color: #1E293B;
+}
+
+/* Custom styles for Leaflet map height constraints */
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+  z-index: 10;
+}
