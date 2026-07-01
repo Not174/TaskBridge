@@ -22,8 +22,9 @@ export default function SeekerProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
-  
+
   const [profilePic, setProfilePic] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string>('');
   const [stats, setStats] = useState({ totalAccepted: 0, completed: 0, ongoing: 0 });
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -32,7 +33,7 @@ export default function SeekerProfilePage() {
   const [isTracking, setIsTracking] = useState(false);
   const [coordinates, setCoordinates] = useState<{ latitude: number; longitude: number } | null>(null);
   const [gpsError, setGpsError] = useState<string | null>(null);
-  
+
   const gpsIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const watchIdRef = useRef<number | null>(null);
 
@@ -52,14 +53,15 @@ export default function SeekerProfilePage() {
         const res = await fetch('/api/profile');
         if (!res.ok) throw new Error('Failed to load profile.');
         const result = await res.json();
-        
+
         const user = result.user;
         setValue('name', user.name || '');
         setValue('email', user.email || '');
         setValue('additionalPhone', user.additionalPhone || '');
         setValue('houseAddress', user.houseAddress || '');
         setProfilePic(user.profilePicUrl || null);
-        
+        setUserId(user.id || '');
+
         if (result.stats) {
           setStats(result.stats);
         }
@@ -250,7 +252,7 @@ export default function SeekerProfilePage() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
-      
+
       {/* Title Header */}
       <div>
         <h1 className="text-3xl font-extrabold text-primary flex items-center gap-2">
@@ -272,11 +274,19 @@ export default function SeekerProfilePage() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
+
         {/* Left Column: Avatar & Job Stats */}
         <div className="lg:col-span-1 space-y-6">
           {/* Avatar Card */}
           <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col items-center justify-center text-center space-y-4">
+            {/* User ID Badge */}
+            {userId && (
+              <div className="w-full text-center">
+                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-accent/10 text-primary text-xs font-extrabold tracking-widest border border-accent/20">
+                  {userId}
+                </span>
+              </div>
+            )}
             <div className="relative">
               {profilePic ? (
                 <img
@@ -289,7 +299,7 @@ export default function SeekerProfilePage() {
                   <User size={48} />
                 </div>
               )}
-              
+
               <label className="absolute bottom-1 right-1 p-2 bg-accent text-primary rounded-full hover:bg-accent-hover transition-colors shadow-md cursor-pointer">
                 {uploading ? (
                   <Loader2 className="animate-spin" size={16} />
@@ -305,7 +315,7 @@ export default function SeekerProfilePage() {
                 />
               </label>
             </div>
-            
+
             <div>
               <h3 className="font-bold text-lg text-primary">Seeker Account</h3>
               <p className="text-xs text-slate-400 mt-0.5">Avatar image max 4MB</p>
@@ -334,11 +344,11 @@ export default function SeekerProfilePage() {
 
         {/* Right Column: Settings and GPS tracking map */}
         <div className="lg:col-span-2 space-y-6">
-          
+
           {/* Profile Form */}
           <form onSubmit={handleSubmit(onSubmit)} className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-100 shadow-sm space-y-6">
             <h3 className="font-bold text-base text-primary border-b border-slate-100 pb-2">Personal Settings</h3>
-            
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               {/* Full Name */}
               <div>
@@ -437,14 +447,12 @@ export default function SeekerProfilePage() {
               {/* Toggle Switch */}
               <button
                 onClick={handleGpsToggle}
-                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                  isTracking ? 'bg-emerald-500' : 'bg-slate-200'
-                }`}
+                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${isTracking ? 'bg-emerald-500' : 'bg-slate-200'
+                  }`}
               >
                 <span
-                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                    isTracking ? 'translate-x-5' : 'translate-x-0'
-                  }`}
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${isTracking ? 'translate-x-5' : 'translate-x-0'
+                    }`}
                 />
               </button>
             </div>

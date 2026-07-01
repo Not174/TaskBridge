@@ -15,6 +15,7 @@ interface Task {
   status: 'OPEN' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
   posterId: string;
   posterName: string | null;
+  hasApplied?: boolean;
 }
 
 const CATEGORIES = [
@@ -36,13 +37,13 @@ export default function SeekerJobBoard() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Filter states
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [locationQuery, setLocationQuery] = useState('');
   const [minBudget, setMinBudget] = useState('');
   const [maxBudget, setMaxBudget] = useState('');
-  
+
   // Action states
   const [acceptingTaskId, setAcceptingTaskId] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -100,30 +101,30 @@ export default function SeekerJobBoard() {
     setAcceptingTaskId(taskId);
     setError(null);
     setSuccessMsg(null);
-    
+
     try {
-      const res = await fetch(`/api/tasks/${taskId}`, {
+      const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'ACCEPT' }),
+        body: JSON.stringify({ action: 'APPLY' }),
       });
 
       const result = await res.json();
       if (!res.ok) {
-        throw new Error(result.error || 'Failed to accept task.');
+        throw new Error(result.error || 'Failed to submit application.');
       }
 
-      setSuccessMsg('Job accepted successfully! It is now in your active list.');
-      
-      // Remove task from available list
-      setTasks((prev) => prev.filter((t) => t.id !== taskId));
-      
+      setSuccessMsg('Application submitted successfully! Wait for administration review and assignment.');
+
+      // Mark as applied in local state
+      setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, hasApplied: true } : t)));
+
       // Auto-dismiss success alert
       setTimeout(() => {
         setSuccessMsg(null);
       }, 5000);
     } catch (err: any) {
-      setError(err.message || 'An error occurred while accepting.');
+      setError(err.message || 'An error occurred while applying.');
     } finally {
       setAcceptingTaskId(null);
     }
@@ -139,7 +140,7 @@ export default function SeekerJobBoard() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
-      
+
       {/* Title Header */}
       <div>
         <h1 className="text-3xl font-extrabold text-primary flex items-center gap-2">
@@ -257,7 +258,7 @@ export default function SeekerJobBoard() {
             // Generate deterministic mock stats for ratings
             const mockRating = (4.3 + (task.title.charCodeAt(0) % 8) / 10).toFixed(1);
             const mockReviews = 5 + (task.title.charCodeAt(1) % 25);
-            
+
             return (
               <div key={task.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm flex flex-col hover:shadow-md transition-all duration-200 overflow-hidden">
                 {/* Card Header Tag */}
@@ -303,17 +304,23 @@ export default function SeekerJobBoard() {
                   </div>
 
                   <button
-                    onClick={() => handleAcceptTask(task.id)}
-                    disabled={acceptingTaskId !== null}
-                    className="px-4 py-2 bg-accent hover:bg-accent-hover text-primary font-bold text-xs rounded-xl shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-center gap-1 disabled:opacity-50"
+                    onClick={() => !task.hasApplied && handleAcceptTask(task.id)}
+                    disabled={acceptingTaskId !== null || task.hasApplied}
+                    className={`px-4 py-2 font-bold text-xs rounded-xl shadow-sm transition-all duration-200 flex items-center justify-center gap-1 ${
+                      task.hasApplied
+                        ? 'bg-slate-200 text-slate-500 cursor-not-allowed shadow-none border border-slate-300/30'
+                        : 'bg-accent hover:bg-accent-hover text-primary hover:shadow-md'
+                    }`}
                   >
                     {acceptingTaskId === task.id ? (
                       <>
                         <Loader2 className="animate-spin" size={12} />
-                        Accepting...
+                        Applying...
                       </>
+                    ) : task.hasApplied ? (
+                      'Applied'
                     ) : (
-                      'Accept Task'
+                      'Apply for Task'
                     )}
                   </button>
                 </div>

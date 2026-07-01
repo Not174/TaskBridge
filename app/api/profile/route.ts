@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { db } from '@/lib/db';
 import { users, tasks } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
@@ -51,6 +52,17 @@ export async function GET(req: Request) {
       stats = { totalAccepted, completed, ongoing };
     }
 
+    if (user.name) {
+      const cookieStore = await cookies();
+      cookieStore.set('tb_profile_complete', 'true', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 7 * 24 * 60 * 60, // 7 days
+        path: '/',
+      });
+    }
+
     return NextResponse.json({
       success: true,
       user: userWithoutPassword,
@@ -85,20 +97,45 @@ export async function PATCH(req: Request) {
     if (additionalPhone !== undefined) updateFields.additionalPhone = additionalPhone;
     if (houseAddress !== undefined) updateFields.houseAddress = houseAddress;
 
+    if (Object.keys(updateFields).length === 0) {
+      return NextResponse.json({ error: 'No fields to update.' }, { status: 400 });
+    }
+
     // Update user record
-    const [updatedUser] = await db
-      .update(users)
-      .set(updateFields)
-      .where(eq(users.id, userId))
-      .returning();
+    try {
+      const [updatedUser] = await db
+        .update(users)
+        .set(updateFields)
+        .where(eq(users.id, userId))
+        .returning();
 
-    const { passwordHash: _, ...userWithoutPassword } = updatedUser;
+      const { passwordHash: _, ...userWithoutPassword } = updatedUser;
 
-    return NextResponse.json({
-      success: true,
-      message: 'Profile updated successfully.',
-      user: userWithoutPassword,
-    });
+      if (updatedUser.name) {
+        const cookieStore = await cookies();
+        cookieStore.set('tb_profile_complete', 'true', {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          maxAge: 7 * 24 * 60 * 60, // 7 days
+          path: '/',
+        });
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: 'Profile updated successfully.',
+        user: userWithoutPassword,
+      });
+    } catch (dbError: any) {
+      // Handle unique constraint violation for email
+      // Drizzle wraps pg errors — check both the error and its cause
+      const pgError = dbError.cause || dbError;
+      if (pgError.code === '23505' && pgError.constraint?.includes('email')) {
+        return NextResponse.json({ error: 'This email address is already in use by another account.' }, { status: 409 });
+      }
+      throw dbError;
+    }
   } catch (error: any) {
     console.error('Error in PATCH profile:', error);
     return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });

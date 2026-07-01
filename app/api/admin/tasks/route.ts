@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { tasks, users } from '@/lib/db/schema';
+import { tasks, users, applications } from '@/lib/db/schema';
 import { eq, desc, aliasedTable } from 'drizzle-orm';
 
 export async function GET(req: Request) {
@@ -26,7 +26,9 @@ export async function GET(req: Request) {
         budget: tasks.budget,
         deadline: tasks.deadline,
         status: tasks.status,
+        progressStep: tasks.progressStep,
         createdAt: tasks.createdAt,
+        paymentMethod: tasks.paymentMethod,
         posterId: tasks.posterId,
         posterName: posters.name,
         posterPhone: posters.phone,
@@ -39,7 +41,29 @@ export async function GET(req: Request) {
       .leftJoin(seekers, eq(tasks.seekerId, seekers.id))
       .orderBy(desc(tasks.createdAt));
 
-    return NextResponse.json(platformTasks);
+    // Fetch all applications
+    const allApplications = await db
+      .select({
+        id: applications.id,
+        taskId: applications.taskId,
+        seekerId: applications.seekerId,
+        seekerName: users.name,
+        seekerPhone: users.phone,
+        createdAt: applications.createdAt,
+      })
+      .from(applications)
+      .leftJoin(users, eq(applications.seekerId, users.id));
+
+    // Map applications to tasks
+    const tasksWithApplicants = platformTasks.map((task) => {
+      const taskApplicants = allApplications.filter((app) => app.taskId === task.id);
+      return {
+        ...task,
+        applicants: taskApplicants,
+      };
+    });
+
+    return NextResponse.json(tasksWithApplicants);
   } catch (error: any) {
     console.error('Error in GET admin/tasks:', error);
     return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });

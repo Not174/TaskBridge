@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { FilePlus, ArrowLeft, Loader2, ClipboardPlus } from 'lucide-react';
+import { FilePlus, ArrowLeft, Loader2, ClipboardPlus, CreditCard, Building2, Banknote } from 'lucide-react';
 import Link from 'next/link';
 
 const CATEGORIES = [
@@ -33,6 +33,7 @@ const taskSchema = z.object({
     (val) => new Date(val) > new Date(),
     { message: 'Deadline must be a future date.' }
   ),
+  paymentMethod: z.string().min(1, { message: 'Please select a payment method.' }),
 });
 
 type TaskInputs = z.infer<typeof taskSchema>;
@@ -61,11 +62,10 @@ export default function PostTaskPage() {
         body: JSON.stringify(data),
       });
 
-      const result = await res.ok ? await res.json() : null;
+      const result = await res.json();
 
       if (!res.ok) {
-        const errorResult = await res.json();
-        throw new Error(errorResult.error || 'Failed to create task.');
+        throw new Error(result.error || 'Failed to create task.');
       }
 
       router.push('/poster/dashboard');
@@ -217,6 +217,41 @@ export default function PostTaskPage() {
           ></textarea>
           {errors.description && (
             <p className="mt-1 text-xs text-red-500">{errors.description.message}</p>
+          )}
+        </div>
+
+        {/* Payment Method */}
+        <div>
+          <label className="block text-sm font-semibold text-slate-700 mb-3">
+            Payment Method
+          </label>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {[
+              { value: 'ONLINE_PAYMENT', label: 'Online Payment', icon: <CreditCard size={18} />, desc: 'bKash, Nagad, etc.' },
+              { value: 'BANK_TRANSFER', label: 'Bank Transfer', icon: <Building2 size={18} />, desc: 'Direct bank deposit' },
+              { value: 'CASH_ON_HAND', label: 'Cash on Hand', icon: <Banknote size={18} />, desc: 'Pay in person' },
+            ].map((method) => (
+              <label
+                key={method.value}
+                className="relative flex flex-col items-center p-4 rounded-xl border-2 cursor-pointer transition-all hover:shadow-sm peer-checked:border-accent"
+              >
+                <input
+                  type="radio"
+                  value={method.value}
+                  {...register('paymentMethod')}
+                  className="peer sr-only"
+                />
+                <div className="peer-checked:text-accent text-slate-400 transition-colors mb-1">
+                  {method.icon}
+                </div>
+                <span className="text-xs font-bold text-primary peer-checked:text-accent">{method.label}</span>
+                <span className="text-[10px] text-slate-400 mt-0.5">{method.desc}</span>
+                <div className="absolute inset-0 rounded-xl border-2 border-transparent peer-checked:border-accent pointer-events-none" />
+              </label>
+            ))}
+          </div>
+          {errors.paymentMethod && (
+            <p className="mt-1 text-xs text-red-500">{errors.paymentMethod.message}</p>
           )}
         </div>
 

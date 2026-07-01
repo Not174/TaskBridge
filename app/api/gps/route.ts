@@ -12,9 +12,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
     }
 
-    // Role guard: Only Seekers can submit coordinates
-    if (userRole !== 'SEEKER') {
-      return NextResponse.json({ error: 'Forbidden. Only seeker accounts can report GPS telemetry.' }, { status: 403 });
+    // Role guard: Only Seekers and Posters can report GPS telemetry
+    if (userRole !== 'SEEKER' && userRole !== 'POSTER') {
+      return NextResponse.json({ error: 'Forbidden. Only seeker and poster accounts can report GPS telemetry.' }, { status: 403 });
     }
 
     const { latitude, longitude } = await req.json();
@@ -34,7 +34,7 @@ export async function POST(req: Request) {
     const [newLog] = await db
       .insert(gpsLogs)
       .values({
-        seekerId: userId,
+        userId: userId,
         latitude: parsedLat,
         longitude: parsedLng,
       })
@@ -56,28 +56,23 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
     }
 
-    // Role guard: Only Posters and Admins can query GPS telemetry
-    if (userRole !== 'POSTER' && userRole !== 'ADMIN') {
-      return NextResponse.json({ error: 'Forbidden. Only posters and admins can view GPS tracking.' }, { status: 403 });
-    }
-
     const { searchParams } = new URL(req.url);
-    const seekerId = searchParams.get('seekerId');
+    const targetUserId = searchParams.get('userId') || searchParams.get('seekerId');
 
-    if (!seekerId) {
-      return NextResponse.json({ error: 'seekerId query parameter is required.' }, { status: 400 });
+    if (!targetUserId) {
+      return NextResponse.json({ error: 'userId or seekerId query parameter is required.' }, { status: 400 });
     }
 
-    // Fetch the latest telemetry point for the seeker
+    // Fetch the latest telemetry point for the target user
     const logs = await db
       .select()
       .from(gpsLogs)
-      .where(eq(gpsLogs.seekerId, seekerId))
+      .where(eq(gpsLogs.userId, targetUserId))
       .orderBy(desc(gpsLogs.recordedAt))
       .limit(1);
 
     if (logs.length === 0) {
-      return NextResponse.json({ error: 'No GPS logs found for this seeker.' }, { status: 404 });
+      return NextResponse.json({ error: 'No GPS logs found for this user.' }, { status: 404 });
     }
 
     return NextResponse.json({

@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Briefcase, Calendar, MapPin, CheckCircle, AlertTriangle, Loader2, CheckCircle2, Play } from 'lucide-react';
+import { Briefcase, Calendar, MapPin, Loader2, CheckCircle2, ChevronRight, CreditCard, Building2, Banknote } from 'lucide-react';
+import ProgressBar from '@/components/ProgressBar';
 
 interface Task {
   id: string;
@@ -13,16 +14,24 @@ interface Task {
   budget: number;
   deadline: string;
   status: 'OPEN' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+  paymentMethod: string;
+  progressStep: string;
   posterId: string;
   posterName: string | null;
 }
+
+const PAYMENT_LABELS: Record<string, { label: string; icon: React.ReactNode }> = {
+  ONLINE_PAYMENT: { label: 'Online', icon: <CreditCard size={12} /> },
+  BANK_TRANSFER: { label: 'Bank', icon: <Building2 size={12} /> },
+  CASH_ON_HAND: { label: 'Cash', icon: <Banknote size={12} /> },
+};
 
 export default function SeekerMyJobs() {
   const [myTasks, setMyTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
+  const [advancingId, setAdvancingId] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   useEffect(() => {
@@ -44,38 +53,27 @@ export default function SeekerMyJobs() {
     }
   };
 
-  const handleMarkComplete = async (taskId: string) => {
-    setCompletingTaskId(taskId);
+  const handleAdvanceStep = async (taskId: string) => {
+    setAdvancingId(taskId);
     setError(null);
     setSuccessMsg(null);
-
     try {
-      const res = await fetch(`/api/tasks/${taskId}`, {
+      const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'COMPLETE' }),
+        body: JSON.stringify({ action: 'ADVANCE_STEP' }),
       });
-
       const result = await res.json();
-      if (!res.ok) {
-        throw new Error(result.error || 'Failed to update task.');
-      }
-
-      setSuccessMsg('Task completed successfully! Great work.');
-      
-      // Update local state to reflect change
+      if (!res.ok) throw new Error(result.error || 'Failed to advance step.');
       setMyTasks((prev) =>
-        prev.map((t) => (t.id === taskId ? { ...t, status: 'COMPLETED' as const } : t))
+        prev.map((t) => (t.id === taskId ? { ...t, progressStep: result.task.progressStep, status: result.task.status } : t))
       );
-
-      // Auto-dismiss success alert
-      setTimeout(() => {
-        setSuccessMsg(null);
-      }, 5000);
+      setSuccessMsg('Progress updated successfully!');
+      setTimeout(() => setSuccessMsg(null), 3000);
     } catch (err: any) {
       setError(err.message || 'An error occurred.');
     } finally {
-      setCompletingTaskId(null);
+      setAdvancingId(null);
     }
   };
 
@@ -102,7 +100,6 @@ export default function SeekerMyJobs() {
     });
   };
 
-  // Stats calculation
   const totalAccepted = myTasks.length;
   const inProgress = myTasks.filter((t) => t.status === 'IN_PROGRESS').length;
   const completed = myTasks.filter((t) => t.status === 'COMPLETED').length;
@@ -118,12 +115,11 @@ export default function SeekerMyJobs() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
       
-      {/* Title Header */}
       <div>
         <h1 className="text-3xl font-extrabold text-primary flex items-center gap-2">
           <Briefcase size={28} /> My Active Jobs
         </h1>
-        <p className="text-slate-500 mt-1">Check your accepted gigs, complete requirements, and submit jobs for review</p>
+        <p className="text-slate-500 mt-1">Track your accepted gigs, advance progress, and submit for review</p>
       </div>
 
       {successMsg && (
@@ -139,7 +135,7 @@ export default function SeekerMyJobs() {
         </div>
       )}
 
-      {/* Stats Counters Grid */}
+      {/* Stats Counters */}
       <div className="grid grid-cols-3 gap-4 max-w-2xl">
         <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm text-center">
           <div className="text-2xl font-black text-primary">{totalAccepted}</div>
@@ -155,12 +151,12 @@ export default function SeekerMyJobs() {
         </div>
       </div>
 
-      {/* Task List Grid */}
+      {/* Task List */}
       {myTasks.length === 0 ? (
         <div className="bg-white p-16 text-center text-slate-400 rounded-2xl border border-slate-100 shadow-sm">
           <Briefcase size={48} className="mx-auto text-slate-200 mb-3" />
           <p className="font-bold text-lg text-primary">No accepted jobs</p>
-          <p className="text-sm mt-1 max-w-xs mx-auto">You have not accepted any jobs yet. Visit the job board to find available work.</p>
+          <p className="text-sm mt-1 max-w-xs mx-auto">Visit the job board to find available work.</p>
           <Link
             href="/seeker/jobs"
             className="mt-6 inline-flex items-center justify-center py-2.5 px-5 text-sm font-bold rounded-xl text-primary bg-accent hover:bg-accent-hover transition-colors"
@@ -170,64 +166,68 @@ export default function SeekerMyJobs() {
         </div>
       ) : (
         <div className="space-y-4">
-          {myTasks.map((task) => (
-            <div key={task.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 hover:shadow-md transition-all duration-200">
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div className="space-y-2 flex-grow">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="font-bold text-primary text-xl leading-tight">{task.title}</h3>
-                    {getStatusBadge(task.status)}
+          {myTasks.map((task) => {
+            const payInfo = PAYMENT_LABELS[task.paymentMethod] || PAYMENT_LABELS['CASH_ON_HAND'];
+            const stepLabel = {
+              POSTED: 'Assignment Accepted',
+              REVIEWING: 'Review Details',
+              ACCEPTED: 'Review Details',
+              CONTACT_COORDINATION: 'Contact the Applicant',
+              WORK_IN_PROGRESS: 'Work in Progress',
+              TASK_COMPLETED: 'Task Completed',
+              PAYMENT_PROCESSING: 'Payment Processing',
+              FINISHED: 'Task Finished',
+              FEEDBACK: 'Feedback',
+            }[task.progressStep] || task.progressStep;
+
+            return (
+              <div key={task.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden hover:shadow-md transition-all">
+                {/* Header */}
+                <div className="p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+                  <div className="space-y-1 flex-grow">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Link href={`/seeker/my-jobs/${encodeURIComponent(task.id)}`}>
+                        <h3 className="font-bold text-primary text-lg hover:text-accent hover:underline cursor-pointer">{task.title}</h3>
+                      </Link>
+                      {getStatusBadge(task.status)}
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                        {payInfo.icon} {payInfo.label}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400">
+                      {task.category} • Posted by: <strong className="text-slate-600">{task.posterName || 'Verified Client'}</strong>
+                    </p>
+                    <p className="text-sm text-slate-500 max-w-3xl leading-relaxed">{task.description}</p>
+                    <div className="flex flex-wrap gap-4 pt-1 text-xs text-slate-500">
+                      <span className="flex items-center gap-1"><MapPin size={14} className="text-slate-400" /> {task.location}</span>
+                      <span className="flex items-center gap-1"><Calendar size={14} className="text-slate-400" /> {formatDate(task.deadline)}</span>
+                      <span className="font-bold text-primary">{task.budget.toLocaleString()} BDT</span>
+                    </div>
                   </div>
-                  <p className="text-xs text-slate-400">
-                    Category: <strong className="text-slate-600 font-semibold">{task.category}</strong> • Posted by: <strong className="text-slate-600 font-semibold">{task.posterName || 'Verified Client'}</strong>
-                  </p>
-                  <p className="text-sm text-slate-500 max-w-3xl leading-relaxed">{task.description}</p>
-                  
-                  {/* Task details */}
-                  <div className="flex flex-wrap gap-4 pt-2 text-xs text-slate-500">
-                    <span className="flex items-center gap-1">
-                      <MapPin size={14} className="text-slate-400" />
-                      {task.location}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Calendar size={14} className="text-slate-400" />
-                      Deadline: {formatDate(task.deadline)}
-                    </span>
-                    <span className="font-bold text-primary">
-                      Budget: {task.budget.toLocaleString()} BDT
-                    </span>
+
+                  {/* Actions */}
+                  <div className="flex-shrink-0">
+                    <Link
+                      href={`/seeker/my-jobs/${encodeURIComponent(task.id)}`}
+                      className="inline-flex items-center gap-1 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all shadow-sm"
+                    >
+                      View Details
+                    </Link>
                   </div>
                 </div>
 
-                {/* Actions */}
-                <div className="flex-shrink-0">
-                  {task.status === 'IN_PROGRESS' ? (
-                    <button
-                      onClick={() => handleMarkComplete(task.id)}
-                      disabled={completingTaskId !== null}
-                      className="inline-flex items-center gap-1.5 px-5 py-3 bg-accent hover:bg-accent-hover text-primary font-bold text-sm rounded-xl transition-all duration-200 shadow-sm disabled:opacity-50"
-                    >
-                      {completingTaskId === task.id ? (
-                        <>
-                          <Loader2 className="animate-spin" size={16} />
-                          Updating...
-                        </>
-                      ) : (
-                        <>
-                          <CheckCircle size={16} />
-                          Mark Complete
-                        </>
-                      )}
-                    </button>
-                  ) : (
-                    <span className="text-xs text-slate-400 italic font-semibold flex items-center gap-1">
-                      <CheckCircle2 size={14} className="text-emerald-500" /> Job closed
+                {/* Progress Step (for active / completed tasks) */}
+                {task.status !== 'OPEN' && task.status !== 'CANCELLED' && (
+                  <div className="px-5 pb-5 border-t border-slate-50 pt-3 flex items-center justify-between text-xs text-slate-500">
+                    <span className="font-medium text-slate-400">Current Progress Stage:</span>
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200 animate-pulse">
+                      {stepLabel}
                     </span>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

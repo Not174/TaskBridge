@@ -93,6 +93,18 @@ export async function POST(req: Request) {
       path: '/',
     });
 
+    if (user.name) {
+      cookieStore.set('tb_profile_complete', 'true', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 7 * 24 * 60 * 60, // 7 days
+        path: '/',
+      });
+    } else {
+      cookieStore.delete('tb_profile_complete');
+    }
+
     // Strip password hash before returning user details
     const { passwordHash: _, ...userWithoutPassword } = user;
 

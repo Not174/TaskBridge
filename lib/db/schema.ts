@@ -5,6 +5,22 @@ import { createId } from '@paralleldrive/cuid2';
 export const roleEnum = pgEnum('role', ['POSTER', 'SEEKER', 'ADMIN']);
 export const statusEnum = pgEnum('task_status', ['OPEN', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED']);
 
+// Payment Method Enum
+export const paymentMethodEnum = pgEnum('payment_method', ['ONLINE_PAYMENT', 'BANK_TRANSFER', 'CASH_ON_HAND']);
+
+// Progress Step Enum (covers both poster and seeker views)
+export const progressStepEnum = pgEnum('progress_step', [
+  'POSTED',
+  'REVIEWING',
+  'ACCEPTED',
+  'CONTACT_COORDINATION',
+  'WORK_IN_PROGRESS',
+  'TASK_COMPLETED',
+  'PAYMENT_PROCESSING',
+  'FINISHED',
+  'FEEDBACK',
+]);
+
 // Users Table
 export const users = pgTable('users', {
   id: text('id').primaryKey().$defaultFn(() => createId()),
@@ -42,14 +58,36 @@ export const tasks = pgTable('tasks', {
   budget: real('budget').notNull(), // Budget in BDT
   deadline: timestamp('deadline').notNull(),
   status: statusEnum('status').default('OPEN').notNull(),
+  paymentMethod: paymentMethodEnum('payment_method').default('CASH_ON_HAND').notNull(),
+  progressStep: progressStepEnum('progress_step').default('POSTED').notNull(),
+  budgetChangedByPoster: boolean('budget_changed_by_poster').default(false).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
 // GPS Telemetry logs
 export const gpsLogs = pgTable('gps_logs', {
   id: text('id').primaryKey().$defaultFn(() => createId()),
-  seekerId: text('seeker_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   latitude: real('latitude').notNull(),
   longitude: real('longitude').notNull(),
   recordedAt: timestamp('recorded_at').defaultNow().notNull(),
+});
+
+// Notifications Table
+export const notifications = pgTable('notifications', {
+  id: text('id').primaryKey().$defaultFn(() => createId()),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  taskId: text('task_id').references(() => tasks.id, { onDelete: 'cascade' }),
+  type: text('type').notNull(), // e.g. 'BUDGET_CHANGED', 'TASK_CANCELLED', etc.
+  message: text('message').notNull(),
+  isRead: boolean('is_read').default(false).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// Applications Table (Seekers apply for tasks)
+export const applications = pgTable('applications', {
+  id: text('id').primaryKey().$defaultFn(() => createId()),
+  taskId: text('task_id').notNull().references(() => tasks.id, { onDelete: 'cascade' }),
+  seekerId: text('seeker_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
 });

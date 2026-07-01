@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { tasks, users } from '@/lib/db/schema';
+import { tasks, users, applications } from '@/lib/db/schema';
 import { eq, and, gte, lte, desc } from 'drizzle-orm';
+import { generateTaskId } from '@/lib/auth/id';
 
 export async function GET(req: Request) {
   try {
@@ -24,6 +25,8 @@ export async function GET(req: Request) {
           budget: tasks.budget,
           deadline: tasks.deadline,
           status: tasks.status,
+          paymentMethod: tasks.paymentMethod,
+          progressStep: tasks.progressStep,
           createdAt: tasks.createdAt,
           seekerId: tasks.seekerId,
           seekerName: users.name,
@@ -52,6 +55,8 @@ export async function GET(req: Request) {
             budget: tasks.budget,
             deadline: tasks.deadline,
             status: tasks.status,
+            paymentMethod: tasks.paymentMethod,
+            progressStep: tasks.progressStep,
             createdAt: tasks.createdAt,
             posterId: tasks.posterId,
             posterName: users.name,
@@ -101,6 +106,8 @@ export async function GET(req: Request) {
           budget: tasks.budget,
           deadline: tasks.deadline,
           status: tasks.status,
+          paymentMethod: tasks.paymentMethod,
+          progressStep: tasks.progressStep,
           createdAt: tasks.createdAt,
           posterId: tasks.posterId,
           posterName: users.name,
@@ -110,7 +117,20 @@ export async function GET(req: Request) {
         .where(and(...conditions))
         .orderBy(desc(tasks.createdAt));
 
-      return NextResponse.json(openTasks);
+      // Fetch user's applications
+      const seekerApplications = await db
+        .select()
+        .from(applications)
+        .where(eq(applications.seekerId, userId));
+
+      const appTaskIds = new Set(seekerApplications.map((app) => app.taskId));
+
+      const tasksWithApplyStatus = openTasks.map((task) => ({
+        ...task,
+        hasApplied: appTaskIds.has(task.id),
+      }));
+
+      return NextResponse.json(tasksWithApplyStatus);
     }
 
     return NextResponse.json({ error: 'Forbidden.' }, { status: 403 });
@@ -135,7 +155,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { title, category, description, location, budget, deadline } = body;
+    const { title, category, description, location, budget, deadline, paymentMethod } = body;
 
     // Validation
     if (!title || !category || !description || !location || budget === undefined || !deadline) {
@@ -152,10 +172,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Deadline must be a valid future date.' }, { status: 400 });
     }
 
+    // Validate payment method
+    const validPaymentMethods = ['ONLINE_PAYMENT', 'BANK_TRANSFER', 'CASH_ON_HAND'];
+    const finalPaymentMethod = validPaymentMethods.includes(paymentMethod) ? paymentMethod : 'CASH_ON_HAND';
+
     // Save task to DB
     const [newTask] = await db
       .insert(tasks)
       .values({
+        id: generateTaskId(),
         posterId: userId,
         title,
         category,
@@ -164,6 +189,8 @@ export async function POST(req: Request) {
         budget: parsedBudget,
         deadline: parsedDeadline,
         status: 'OPEN',
+        paymentMethod: finalPaymentMethod,
+        progressStep: 'POSTED',
       })
       .returning();
 

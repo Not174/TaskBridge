@@ -6,6 +6,7 @@ export async function POST() {
     const cookieStore = await cookies();
     cookieStore.delete('tb_access_token');
     cookieStore.delete('tb_refresh_token');
+    cookieStore.delete('tb_profile_complete');
     
     return NextResponse.json({
       success: true,

@@ -13,7 +13,7 @@ export async function middleware(req: NextRequest) {
   // APIs
   const isProtectedApi = path.startsWith('/api/') && 
     !path.startsWith('/api/auth') && 
-    path !== '/api/gps'; // Handle custom auth inside public API if needed, otherwise protect here.
+    path !== '/api/gps';
     
   // If this route does not require protection, proceed
   if (!isPosterRoute && !isSeekerRoute && !isAdminRoute && !isProtectedApi) {
@@ -53,6 +53,7 @@ export async function middleware(req: NextRequest) {
   const userRole = payload.role as string;
   const userId = payload.id as string;
   const userPhone = payload.phone as string;
+  const userName = payload.name as string | undefined;
 
   // Verify path authorization
   if (isPosterRoute && userRole !== 'POSTER') {
@@ -65,6 +66,20 @@ export async function middleware(req: NextRequest) {
 
   if (isAdminRoute && userRole !== 'ADMIN') {
     return NextResponse.redirect(new URL('/admin/login', req.url));
+  }
+
+  // Profile completion gate: redirect to profile page if name is not set
+  // (only for non-profile poster/seeker pages and non-API routes)
+  const isProfilePage = path === '/poster/profile' || path === '/seeker/profile';
+  if ((isPosterRoute || isSeekerRoute) && !isProfilePage && !isProtectedApi) {
+    // Check the profile_complete cookie (set after first profile save)
+    const profileComplete = req.cookies.get('tb_profile_complete')?.value;
+    if (!profileComplete) {
+      const profileUrl = isPosterRoute
+        ? new URL('/poster/profile?setup=1', req.url)
+        : new URL('/seeker/profile?setup=1', req.url);
+      return NextResponse.redirect(profileUrl);
+    }
   }
 
   // Protect specific admin API routes

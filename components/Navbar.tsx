@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Menu, X, Briefcase, User, LogOut, LayoutDashboard, FilePlus, Eye } from 'lucide-react';
+import NotificationBell from './NotificationBell';
 
 interface NavbarProps {
   user: {
@@ -201,6 +202,7 @@ export default function Navbar({ user }: NavbarProps) {
           {/* Desktop Nav Links */}
           <div className="hidden md:flex items-center gap-6">
             {renderNavLinks()}
+            {user && user.role !== 'ADMIN' && <NotificationBell />}
           </div>
 
           {/* Mobile Menu Toggle Button */}

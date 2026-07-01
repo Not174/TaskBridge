@@ -5,6 +5,7 @@ import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import { verifyJWT, signJWT } from '@/lib/auth/jose';
+import { generateUserUniqueId } from '@/lib/auth/id';
 
 export async function POST(req: Request) {
   try {
@@ -62,6 +63,7 @@ export async function POST(req: Request) {
     const [newUser] = await db
       .insert(users)
       .values({
+        id: generateUserUniqueId(phone, role),
         phone,
         role,
         passwordHash,

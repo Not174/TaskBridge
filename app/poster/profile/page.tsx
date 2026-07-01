@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { User, Camera, Loader2, Save, Briefcase, CheckCircle, Clock } from 'lucide-react';
+import { User, Camera, Loader2, Save, Briefcase, CheckCircle, Clock, Navigation, MapPin } from 'lucide-react';
+import TrackingMap from '@/components/TrackingMap';
 
 const profileSchema = z.object({
   name: z.string().min(2, { message: 'Name must be at least 2 characters long.' }).nullable().or(z.string().length(0)),
@@ -21,11 +22,110 @@ export default function PosterProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
-  
+
   const [profilePic, setProfilePic] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string>('');
   const [stats, setStats] = useState({ totalPosted: 0, completed: 0, inProgress: 0, open: 0 });
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  // GPS Tracking States
+  const [isTracking, setIsTracking] = useState(false);
+  const [coordinates, setCoordinates] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [gpsError, setGpsError] = useState<string | null>(null);
+
+  const gpsIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const watchIdRef = useRef<number | null>(null);
+
+  // Clean up GPS handlers when component unmounts
+  useEffect(() => {
+    return () => {
+      stopGpsTracking();
+    };
+  }, []);
+
+  const handleGpsToggle = () => {
+    if (isTracking) {
+      stopGpsTracking();
+    } else {
+      startGpsTracking();
+    }
+  };
+
+  const startGpsTracking = () => {
+    setGpsError(null);
+
+    if (!navigator.geolocation) {
+      setGpsError('Geolocation is not supported by your browser.');
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        setCoordinates({ latitude, longitude });
+        postGpsLocation(latitude, longitude);
+      },
+      (error) => {
+        setGpsError(`GPS Access Denied: ${error.message}`);
+        setIsTracking(false);
+      },
+      { enableHighAccuracy: true }
+    );
+
+    gpsIntervalRef.current = setInterval(() => {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          setCoordinates({ latitude, longitude });
+          postGpsLocation(latitude, longitude);
+        },
+        (error) => {
+          console.error('GPS interval error:', error);
+        },
+        { enableHighAccuracy: true }
+      );
+    }, 30000);
+
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        setCoordinates({ latitude, longitude });
+      },
+      (error) => {
+        console.error('GPS watch error:', error);
+      },
+      { enableHighAccuracy: true }
+    );
+
+    setIsTracking(true);
+  };
+
+  const stopGpsTracking = () => {
+    if (gpsIntervalRef.current) {
+      clearInterval(gpsIntervalRef.current);
+      gpsIntervalRef.current = null;
+    }
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+    setCoordinates(null);
+    setIsTracking(false);
+  };
+
+  const postGpsLocation = async (lat: number, lng: number) => {
+    try {
+      await fetch('/api/gps', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ latitude: lat, longitude: lng }),
+      });
+      console.log(`[GPS TELEMETRY] Logged coordinates: Lat: ${lat}, Lng: ${lng}`);
+    } catch (err) {
+      console.error('Failed to log location coordinates:', err);
+    }
+  };
 
   const {
     register,
@@ -42,14 +142,15 @@ export default function PosterProfilePage() {
         const res = await fetch('/api/profile');
         if (!res.ok) throw new Error('Failed to load profile.');
         const result = await res.json();
-        
+
         const user = result.user;
         setValue('name', user.name || '');
         setValue('email', user.email || '');
         setValue('location', user.location || '');
         setValue('additionalPhone', user.additionalPhone || '');
         setProfilePic(user.profilePicUrl || null);
-        
+        setUserId(user.id || '');
+
         if (result.stats) {
           setStats(result.stats);
         }
@@ -146,7 +247,7 @@ export default function PosterProfilePage() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
-      
+
       {/* Title Header */}
       <div>
         <h1 className="text-3xl font-extrabold text-primary flex items-center gap-2">
@@ -168,11 +269,19 @@ export default function PosterProfilePage() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
+
         {/* Left Column: Picture and Stats */}
         <div className="lg:col-span-1 space-y-6">
           {/* Picture Card */}
           <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col items-center justify-center text-center space-y-4">
+            {/* User ID Badge */}
+            {userId && (
+              <div className="w-full text-center">
+                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-accent/10 text-primary text-xs font-extrabold tracking-widest border border-accent/20">
+                  {userId}
+                </span>
+              </div>
+            )}
             <div className="relative">
               {profilePic ? (
                 <img
@@ -185,7 +294,7 @@ export default function PosterProfilePage() {
                   <User size={48} />
                 </div>
               )}
-              
+
               {/* Upload Overlay Button */}
               <label className="absolute bottom-1 right-1 p-2 bg-accent text-primary rounded-full hover:bg-accent-hover transition-colors shadow-md cursor-pointer">
                 {uploading ? (
@@ -202,7 +311,7 @@ export default function PosterProfilePage() {
                 />
               </label>
             </div>
-            
+
             <div>
               <h3 className="font-bold text-lg text-primary">Poster Account</h3>
               <p className="text-xs text-slate-400 mt-0.5">Avatar image max 4MB</p>
@@ -229,10 +338,10 @@ export default function PosterProfilePage() {
           </div>
         </div>
 
-        {/* Right Column: Settings Form */}
-        <div className="lg:col-span-2">
+        {/* Right Column: Settings Form & GPS Tracker */}
+        <div className="lg:col-span-2 space-y-6">
           <form onSubmit={handleSubmit(onSubmit)} className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-100 shadow-sm space-y-6">
-            
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               {/* Full Name */}
               <div>
@@ -318,6 +427,73 @@ export default function PosterProfilePage() {
             </div>
 
           </form>
+
+          {/* GPS Tracking Panel */}
+          <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-100 shadow-sm space-y-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-4">
+              <div>
+                <h3 className="font-bold text-base text-primary flex items-center gap-2">
+                  <Navigation size={18} className="text-accent" /> GPS Location Tracker
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">Share your live position with seekers to coordinate work delivery</p>
+              </div>
+
+              {/* Toggle Switch */}
+              <button
+                type="button"
+                onClick={handleGpsToggle}
+                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${isTracking ? 'bg-emerald-500' : 'bg-slate-200'
+                  }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${isTracking ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                />
+              </button>
+            </div>
+
+            {gpsError && (
+              <div className="bg-red-50 border border-red-100 p-3 rounded-lg text-xs font-semibold text-red-700">
+                {gpsError}
+              </div>
+            )}
+
+            {isTracking ? (
+              <div className="space-y-4">
+                <div className="bg-emerald-50 border border-emerald-100 text-emerald-800 p-3 rounded-xl text-xs flex items-center gap-1.5 font-medium animate-pulse">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                  GPS Sharing Active. Posting coordinates every 30 seconds.
+                </div>
+
+                {coordinates ? (
+                  <div className="space-y-2">
+                    <div className="text-xs text-slate-500 flex justify-between font-medium">
+                      <span>Live Mini-map Position:</span>
+                      <span className="text-slate-600 font-bold">Lat: {coordinates.latitude.toFixed(6)}, Lng: {coordinates.longitude.toFixed(6)}</span>
+                    </div>
+                    <div className="h-[250px] relative overflow-hidden rounded-xl border border-slate-100">
+                      <TrackingMap
+                        latitude={coordinates.latitude}
+                        longitude={coordinates.longitude}
+                        seekerName="My Position"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center p-8 bg-slate-50 border border-slate-100 rounded-xl text-slate-400 text-xs gap-2">
+                    <Loader2 className="animate-spin text-accent" size={16} />
+                    Calculating GPS position...
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-center p-10 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-slate-400 text-xs">
+                <MapPin size={32} className="mx-auto text-slate-300 mb-2" />
+                <p className="font-semibold text-slate-600">Location sharing is inactive</p>
+                <p className="mt-1">Toggle the GPS switch to start broadcasting your location and center the mini-map.</p>
+              </div>
+            )}
+          </div>
         </div>
 
       </div>
