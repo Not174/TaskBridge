@@ -1,13 +1,31 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { db, isDatabaseConfigured } from '@/lib/db';
 import { otpLogs } from '@/lib/db/schema';
 import { eq, and, desc } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import { signJWT } from '@/lib/auth/jose';
+import { verifyMockOtp } from '@/lib/auth/mock-auth';
 
 export async function POST(req: Request) {
   try {
     const { phone, otpCode, role } = await req.json();
+
+    if (!isDatabaseConfigured() || !db) {
+      const isValid = await verifyMockOtp(phone, otpCode);
+      if (!isValid) {
+        return NextResponse.json({ error: 'Incorrect OTP code.' }, { status: 400 });
+      }
+
+      const tempTokenPayload = {
+        phone,
+        role,
+        verifiedAt: new Date().toISOString(),
+        type: 'signup_temp',
+      };
+
+      const tempToken = await signJWT(tempTokenPayload, '10m');
+      return NextResponse.json({ success: true, message: 'OTP verified successfully.', tempToken });
+    }
 
     if (!phone || !otpCode || !role) {
       return NextResponse.json(

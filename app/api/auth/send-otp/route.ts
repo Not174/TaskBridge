@@ -1,13 +1,33 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { db, isDatabaseConfigured } from '@/lib/db';
 import { otpLogs } from '@/lib/db/schema';
 import bcrypt from 'bcryptjs';
+import { storeMockOtp } from '@/lib/auth/mock-auth';
 
 const BANGLADESHI_PHONE_REGEX = /^01[3-9]\d{8}$/;
 
 export async function POST(req: Request) {
   try {
     const { phone, role } = await req.json();
+
+    if (!isDatabaseConfigured() || !db) {
+      const rawOtp = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+      await storeMockOtp(phone, rawOtp, expiresAt);
+      const provider = process.env.SMS_PROVIDER || 'mock';
+      if (provider === 'mock') {
+        console.log(`\n==================================================`);
+        console.log(`[SMS MOCK] To: ${phone}`);
+        console.log(`[SMS MOCK] Your TaskBridge OTP code is: ${rawOtp}`);
+        console.log(`[SMS MOCK] Valid for 5 minutes.`);
+        console.log(`==================================================\n`);
+      }
+      return NextResponse.json({
+        success: true,
+        message: 'OTP sent successfully.',
+        otp: process.env.SMS_PROVIDER === 'mock' || !process.env.SMS_PROVIDER ? rawOtp : undefined,
+      });
+    }
 
     // 1. Validate Phone Number
     if (!phone || !BANGLADESHI_PHONE_REGEX.test(phone)) {

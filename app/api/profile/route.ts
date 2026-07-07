@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { db } from '@/lib/db';
+import { db, isDatabaseConfigured } from '@/lib/db';
 import { users, tasks } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 
@@ -9,6 +9,25 @@ export async function GET(req: Request) {
     const userId = req.headers.get('x-user-id');
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
+    }
+
+    if (!isDatabaseConfigured() || !db) {
+      return NextResponse.json({
+        success: true,
+        user: {
+          id: userId,
+          phone: '',
+          role: 'SEEKER',
+          name: null,
+          email: null,
+          location: null,
+          additionalPhone: null,
+          houseAddress: null,
+          profilePicUrl: null,
+          isActive: true,
+        },
+        stats: {},
+      });
     }
 
     // 1. Fetch user by ID
@@ -99,6 +118,25 @@ export async function PATCH(req: Request) {
 
     if (Object.keys(updateFields).length === 0) {
       return NextResponse.json({ error: 'No fields to update.' }, { status: 400 });
+    }
+
+    if (!isDatabaseConfigured() || !db) {
+      return NextResponse.json({
+        success: true,
+        message: 'Profile update skipped because the database is not configured.',
+        user: {
+          id: userId,
+          phone: '',
+          role: 'SEEKER',
+          name: name ?? null,
+          email: email === '' ? null : email ?? null,
+          location: location ?? null,
+          additionalPhone: null,
+          houseAddress: null,
+          profilePicUrl: null,
+          isActive: true,
+        },
+      });
     }
 
     // Update user record

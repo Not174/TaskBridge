@@ -1,15 +1,49 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { db } from '@/lib/db';
+import { db, isDatabaseConfigured } from '@/lib/db';
 import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import { verifyJWT, signJWT } from '@/lib/auth/jose';
 import { generateUserUniqueId } from '@/lib/auth/id';
+import { createMockUser, createMockSession } from '@/lib/auth/mock-auth';
 
 export async function POST(req: Request) {
   try {
     const { tempToken, password, confirmPassword } = await req.json();
+
+    if (!isDatabaseConfigured() || !db) {
+      const payload = await verifyJWT(tempToken);
+      if (!payload || payload.type !== 'signup_temp') {
+        return NextResponse.json(
+          { error: 'Invalid or expired registration session. Please verify OTP again.' },
+          { status: 400 }
+        );
+      }
+
+      const { phone, role } = payload as { phone: string; role: 'POSTER' | 'SEEKER' | 'ADMIN' };
+      const user = await createMockUser(phone, role, password);
+      const { accessToken, refreshToken } = await createMockSession(user);
+
+      const cookieStore = await cookies();
+      cookieStore.set('tb_access_token', accessToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 15 * 60,
+        path: '/',
+      });
+
+      cookieStore.set('tb_refresh_token', refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 7 * 24 * 60 * 60,
+        path: '/',
+      });
+
+      return NextResponse.json({ success: true, message: 'Account created successfully.', user });
+    }
 
     // 1. Basic validation
     if (!tempToken || !password || !confirmPassword) {

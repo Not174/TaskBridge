@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { v2 as cloudinary } from 'cloudinary';
-import { db } from '@/lib/db';
+import { db, isDatabaseConfigured } from '@/lib/db';
 import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 
@@ -49,6 +49,14 @@ export async function POST(req: Request) {
     else {
       console.log('[Upload Route] Cloudinary is not configured. Saving image as base64 string in DB.');
       imageUrl = image;
+    }
+
+    if (!isDatabaseConfigured() || !db) {
+      return NextResponse.json({
+        success: true,
+        message: 'Profile picture upload skipped because the database is not configured.',
+        imageUrl,
+      });
     }
 
     // 3. Update database record for the user

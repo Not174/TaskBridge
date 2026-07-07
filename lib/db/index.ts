@@ -2,9 +2,11 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import * as schema from './schema';
 
-// Setup connection pool
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
+const connectionString = process.env.DATABASE_URL;
 
-export const db = drizzle(pool, { schema });
+export const isDatabaseConfigured = () => Boolean(connectionString);
+
+const pool = connectionString ? new Pool({ connectionString }) : undefined;
+export const db = connectionString
+  ? drizzle(pool as Pool, { schema })
+  : (null as unknown as ReturnType<typeof drizzle>);

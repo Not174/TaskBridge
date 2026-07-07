@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { db, isDatabaseConfigured } from '@/lib/db';
 import { notifications } from '@/lib/db/schema';
 import { eq, desc, and } from 'drizzle-orm';
 
@@ -9,6 +9,10 @@ export async function GET(req: Request) {
     const userId = req.headers.get('x-user-id');
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
+    }
+
+    if (!isDatabaseConfigured() || !db) {
+      return NextResponse.json([]);
     }
 
     const userNotifications = await db
@@ -34,6 +38,10 @@ export async function PATCH(req: Request) {
     }
 
     const { ids } = await req.json(); // array of notification ids to mark read
+
+    if (!isDatabaseConfigured() || !db) {
+      return NextResponse.json({ success: true });
+    }
 
     if (ids && Array.isArray(ids)) {
       for (const id of ids) {

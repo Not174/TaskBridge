@@ -1,10 +1,7 @@
 import { SignJWT, jwtVerify } from 'jose';
 
 const getSecretKey = () => {
-  const secret = process.env.JWT_SECRET;
-  if (!secret) {
-    throw new Error('JWT_SECRET environment variable is not defined');
-  }
+  const secret = process.env.JWT_SECRET || 'dev-taskbridge-secret-change-me';
   return new TextEncoder().encode(secret);
 };
 

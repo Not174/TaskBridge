@@ -1,14 +1,43 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { db } from '@/lib/db';
+import { db, isDatabaseConfigured } from '@/lib/db';
 import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import { signJWT } from '@/lib/auth/jose';
+import { authenticateMockUser, createMockSession } from '@/lib/auth/mock-auth';
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+
+    if (!isDatabaseConfigured() || !db) {
+      const { phone, password } = body;
+      const user = await authenticateMockUser(phone, password);
+      if (!user) {
+        return NextResponse.json({ error: 'Invalid phone number or password.' }, { status: 401 });
+      }
+
+      const { accessToken, refreshToken } = await createMockSession(user);
+      const cookieStore = await cookies();
+      cookieStore.set('tb_access_token', accessToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 15 * 60,
+        path: '/',
+      });
+
+      cookieStore.set('tb_refresh_token', refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 7 * 24 * 60 * 60,
+        path: '/',
+      });
+
+      return NextResponse.json({ success: true, message: 'Login successful.', user });
+    }
     const { phone, email, password } = body;
 
     if (!password) {

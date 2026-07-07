@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { db, isDatabaseConfigured } from '@/lib/db';
 import { users, tasks } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 
@@ -9,6 +9,10 @@ export async function GET(req: Request) {
 
     if (userRole !== 'ADMIN') {
       return NextResponse.json({ error: 'Forbidden. Admin role required.' }, { status: 403 });
+    }
+
+    if (!isDatabaseConfigured() || !db) {
+      return NextResponse.json({ error: 'Database is not configured.' }, { status: 500 });
     }
 
     // 1. Fetch all users and tasks to count metrics (efficient for small/medium DBs)
