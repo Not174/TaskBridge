@@ -2,107 +2,127 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { db } from '@/lib/db';
 import { users } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, or } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import { verifyJWT, signJWT } from '@/lib/auth/jose';
 import { generateUserUniqueId } from '@/lib/auth/id';
+import { signupRequestSchema } from '@/lib/validators/signup';
 
 export async function POST(req: Request) {
   try {
-    const { tempToken, password, confirmPassword } = await req.json();
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 });
+    }
 
-    // 1. Basic validation
-    if (!tempToken || !password || !confirmPassword) {
+    // 1. Validate inputs
+    const parsed = signupRequestSchema.safeParse(body);
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Temporary token and password fields are required.' },
+        { error: parsed.error.issues[0]?.message || 'Invalid request.' },
         { status: 400 }
       );
     }
 
-    if (password.length < 8) {
-      return NextResponse.json(
-        { error: 'Password must be at least 8 characters long.' },
-        { status: 400 }
-      );
-    }
+    const { tempToken, phone, password, confirmPassword } = parsed.data;
 
+    // 2. Password confirmation match
     if (password !== confirmPassword) {
       return NextResponse.json({ error: 'Passwords do not match.' }, { status: 400 });
     }
 
-    // 2. Validate temp token
+    // 3. Validate the temp token — must be the email_signup_temp type
     const payload = await verifyJWT(tempToken);
-    if (!payload || payload.type !== 'signup_temp') {
+    if (!payload || payload.type !== 'email_signup_temp') {
       return NextResponse.json(
-        { error: 'Invalid or expired registration session. Please verify OTP again.' },
+        { error: 'Invalid or expired registration session. Please verify your email again.' },
         { status: 400 }
       );
     }
 
-    const { phone, role } = payload as { phone: string; role: 'POSTER' | 'SEEKER' | 'ADMIN' };
+    const { email, role } = payload as {
+      email: string;
+      role: 'POSTER' | 'SEEKER';
+    };
 
-    // 3. Verify if user already exists
+    // 4. Check for existing accounts with the same email or phone
     const existingUsers = await db
-      .select()
+      .select({ id: users.id, email: users.email, phone: users.phone })
       .from(users)
-      .where(eq(users.phone, phone))
-      .limit(1);
+      .where(or(eq(users.email, email), eq(users.phone, phone)))
+      .limit(2);
 
-    if (existingUsers.length > 0) {
-      return NextResponse.json(
-        { error: 'An account with this phone number already exists.' },
-        { status: 409 }
-      );
+    for (const u of existingUsers) {
+      if (u.email === email) {
+        return NextResponse.json(
+          { error: 'An account with this email address already exists.' },
+          { status: 409 }
+        );
+      }
+      if (u.phone === phone) {
+        return NextResponse.json(
+          { error: 'An account with this phone number already exists.' },
+          { status: 409 }
+        );
+      }
     }
 
-    // 4. Hash the password (salt rounds = 12)
+    // 5. Hash password
     const salt = await bcrypt.genSalt(12);
     const passwordHash = await bcrypt.hash(password, salt);
 
-    // 5. Create user
+    // 6. Create user — email is now fully verified, phone is the unique login key
     const [newUser] = await db
       .insert(users)
       .values({
         id: generateUserUniqueId(phone, role),
         phone,
+        email,
         role,
         passwordHash,
         isActive: true,
       })
       .returning();
 
-    // 6. Generate access and refresh JWT tokens
-    const accessToken = await signJWT({ id: newUser.id, phone: newUser.phone, role: newUser.role }, '15m');
-    const refreshToken = await signJWT({ id: newUser.id, phone: newUser.phone, role: newUser.role }, '7d');
+    // 7. Generate JWT access + refresh tokens
+    const accessToken = await signJWT(
+      { id: newUser.id, phone: newUser.phone, role: newUser.role },
+      '15m'
+    );
+    const refreshToken = await signJWT(
+      { id: newUser.id, phone: newUser.phone, role: newUser.role },
+      '7d'
+    );
 
-    // 7. Store JWTs in secure HTTP-only cookies
+    // 8. Store JWTs in secure HTTP-only cookies
     const cookieStore = await cookies();
     cookieStore.set('tb_access_token', accessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 15 * 60, // 15 minutes
+      maxAge: 15 * 60,
       path: '/',
     });
-
     cookieStore.set('tb_refresh_token', refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60, // 7 days
+      maxAge: 7 * 24 * 60 * 60,
       path: '/',
     });
 
-    // Strip passwordHash from user representation
-    const { passwordHash: _, ...userWithoutPassword } = newUser;
+    // Strip sensitive fields
+    const { passwordHash: _pw, ...userWithoutPassword } = newUser;
 
     return NextResponse.json({
       success: true,
       message: 'Account created successfully.',
       user: userWithoutPassword,
     });
-  } catch (error: any) {
-    console.error('Error in signup API:', error);
+  } catch (error) {
+    console.error('[signup] Error:', error);
     return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });
   }
 }

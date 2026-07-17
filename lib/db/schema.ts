@@ -1,4 +1,4 @@
-import { pgTable, pgEnum, text, boolean, real, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, pgEnum, text, boolean, real, timestamp, integer } from 'drizzle-orm/pg-core';
 import { createId } from '@paralleldrive/cuid2';
 
 // Role & Status Enums
@@ -44,6 +44,19 @@ export const otpLogs = pgTable('otp_logs', {
   otpCode: text('otp_code').notNull(), // Stored hashed
   expiresAt: timestamp('expires_at').notNull(),
   used: boolean('used').default(false).notNull(),
+});
+
+// Email OTP Verification Table
+export const emailOtps = pgTable('email_otps', {
+  id: text('id').primaryKey().$defaultFn(() => createId()),
+  email: text('email').notNull(),
+  otpHash: text('otp_hash').notNull(), // bcrypt-hashed — never store plain OTP
+  expiresAt: timestamp('expires_at').notNull(),
+  attemptCount: integer('attempt_count').default(0).notNull(),
+  resendCount: integer('resend_count').default(0).notNull(),
+  resendWindowStart: timestamp('resend_window_start'), // tracks 15-min resend window
+  verified: boolean('verified').default(false).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
 // Tasks Table
